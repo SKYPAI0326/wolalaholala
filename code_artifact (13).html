@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>離線自訂雷達圖生成器</title>
+  <style>
+    /* ==========================================================================
+       設計系統與 CSS 變數 (支援淺色/深色主題自動適應，無外部依賴)
+       ========================================================================== */
+    :root {
+      --bg-app: #f4f6f9;
+      --bg-panel: #ffffff;
+      --bg-input: #f8fafc;
+      --border-color: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --danger: #ef4444;
+      --danger-hover: #dc2626;
+      --success: #10b981;
+      --success-hover: #059669;
+      --shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.06);
+      --radius-lg: 16px;
+      --radius-md: 10px;
+      --radius-sm: 6px;
+      --checker-1: #e2e8f0;
+      --checker-2: #f8fafc;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg-app: #0b1120;
+        --bg-panel: #151e32;
+        --bg-input: #1e293b;
+        --border-color: #334155;
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --primary: #3b82f6;
+        --primary-hover: #60a5fa;
+        --shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.4);
+        --checker-1: #1e293b;
+        --checker-2: #0f172a;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+      background-color: var(--bg-app);
+      color: var(--text-main);
+      line-height: 1.5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ==========================================================================
+       頂部導覽列
+       ========================================================================== */
+    header {
+      background-color: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand svg {
+      width: 28px;
+      height: 28px;
+      color: var(--primary);
+    }
+
+    .brand h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.12);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* ==========================================================================
+       主版面網格配置
+       ========================================================================== */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 420px 1fr;
+      gap: 1.5rem;
+      padding: 1.5rem;
+      max-width: 1440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ==========================================================================
+       控制面板卡片
+       ========================================================================== */
+    .panel {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      height: fit-content;
+    }
+
+    .section-title {
+      font-size: 0.9rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .form-group.full {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-main);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-color);
+      background-color: var(--bg-input);
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus {
+      border-color: var(--primary);
+    }
+
+    input[type="color"] {
+      -webkit-appearance: none;
+      border: 1px solid var(--border-color);
+      width: 36px;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      padding: 2px;
+      background: var(--bg-input);
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    /* 顏色組合列 */
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* ==========================================================================
+       動態維度列表
+       ========================================================================== */
+    .dimension-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      max-height: 340px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .dimension-item {
+      display: grid;
+      grid-template-columns: 1fr 95px 34px;
+      gap: 0.5rem;
+      align-items: center;
+      background: var(--bg-input);
+      padding: 0.5rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+    }
+
+    /* ==========================================================================
+       按鈕樣式
+       ========================================================================== */
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      font-size: 0.875rem;
+      padding: 0.55rem 0.9rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+
+    .btn-primary {
+      background-color: var(--primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .btn-success {
+      background-color: var(--success);
+      color: #ffffff;
+      padding: 0.65rem 1.2rem;
+      font-size: 0.95rem;
+    }
+
+    .btn-success:hover {
+      background-color: var(--success-hover);
+    }
+
+    .btn-outline {
+      background-color: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+    }
+
+    .btn-outline:hover {
+      background-color: var(--bg-input);
+    }
+
+    .btn-icon-danger {
+      background: transparent;
+      color: var(--text-muted);
+      padding: 0.35rem;
+      border-radius: var(--radius-sm);
+    }
+
+    .btn-icon-danger:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--danger);
+    }
+
+    .btn-icon-danger:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+
+    /* ==========================================================================
+       右側畫布預覽區 (棋盤格透明背景指示)
+       ========================================================================== */
+    .preview-container {
+      background-color: var(--bg-panel);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.25rem;
+    }
+
+    .canvas-stage {
+      width: 100%;
+      flex: 1;
+      min-height: 460px;
+      border-radius: var(--radius-md);
+      border: 1px dashed var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+      /* 棋盤格背景：直觀顯示透明去背效果 */
+      background-image:
+        linear-gradient(45deg, var(--checker-1) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker-1) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker-1) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker-1) 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+      background-color: var(--checker-2);
+    }
+
+    canvas {
+      max-width: 100%;
+      max-height: 620px;
+      width: auto;
+      height: auto;
+      display: block;
+    }
+
+    .preview-toolbar {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-color);
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.875rem;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* 訊息提示框 (取代 alert) */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background: #0f172a;
+      color: #ffffff;
+      padding: 0.75rem 1.25rem;
+      border-radius: var(--radius-md);
+      font-size: 0.875rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+      opacity: 0;
+      transform: translateY(12px);
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 50;
+    }
+
+    #toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 頂部標題欄 -->
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="12 2 21.5 8.9 17.9 20.1 6.1 20.1 2.5 8.9 12 2"></polygon>
+        <polygon points="12 6.5 17.2 10.3 15.2 16.4 8.8 16.4 6.8 10.3 12 6.5" opacity="0.5"></polygon>
+      </svg>
+      <h1>自訂雷達圖生成器</h1>
+      <span class="badge">純離線單檔版</span>
+    </div>
+    <div style="display: flex; gap: 0.5rem;">
+      <button type="button" class="btn-outline" id="btnReset">重設預設值</button>
+      <button type="button" class="btn-success" id="btnDownloadTop">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        下載去背 PNG
+      </button>
+    </div>
+  </header>
+
+  <!-- 主要雙欄工作區 -->
+  <main>
+    <!-- 左側設定面板 -->
+    <aside class="panel">
+      <!-- 1. 數值範圍與網格設定 -->
+      <div>
+        <div class="section-title">1. 數值範圍與網格設定</div>
+        <div class="control-grid">
+          <div class="form-group">
+            <label for="minVal">最小值 (Min)</label>
+            <input type="number" id="minVal" value="0" step="any" />
+          </div>
+          <div class="form-group">
+            <label for="maxVal">最大值 (Max)</label>
+            <input type="number" id="maxVal" value="100" step="any" />
+          </div>
+          <div class="form-group">
+            <label for="gridLevels">網格圈數</label>
+            <input type="number" id="gridLevels" value="5" min="1" max="12" />
+          </div>
+          <div class="form-group">
+            <label for="gridShape">網格形狀</label>
+            <select id="gridShape">
+              <option value="polygon">多邊形網格</option>
+              <option value="circle">同心圓網格</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 色彩與視覺樣式 -->
+      <div>
+        <div class="section-title">2. 色彩與字體設定</div>
+        <div class="control-grid">
+          <div class="form-group">
+            <label>資料區塊顏色</label>
+            <div class="color-row">
+              <input type="color" id="fillColor" value="#3b82f6" />
+              <input type="text" id="fillColorHex" value="#3B82F6" maxlength="7" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>
+              <span>填充透明度</span>
+              <span id="opacityVal">30%</span>
+            </label>
+            <input type="range" id="fillOpacity" min="0" max="100" value="30" />
+          </div>
+          <div class="form-group">
+            <label>線條與節點色</label>
+            <div class="color-row">
+              <input type="color" id="strokeColor" value="#2563eb" />
+              <input type="text" id="strokeColorHex" value="#2563EB" maxlength="7" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>標籤文字顏色</label>
+            <div class="color-row">
+              <input type="color" id="labelColor" value="#1e293b" />
+              <input type="text" id="labelColorHex" value="#1E293B" maxlength="7" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>網格線顏色</label>
+            <div class="color-row">
+              <input type="color" id="gridColor" value="#94a3b8" />
+              <input type="text" id="gridColorHex" value="#94A3B8" maxlength="7" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="fontSize">標籤字級 (px)</label>
+            <input type="number" id="fontSize" value="16" min="10" max="36" />
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 維度與項目數值 -->
+      <div>
+        <div class="section-title">
+          <span>3. 維度與項目數值 (<span id="dimCount">6</span> 項)</span>
+          <button type="button" class="btn-primary" id="btnAddDim" style="padding: 0.3rem 0.65rem; font-size: 0.8rem;">
+            + 新增維度
+          </button>
+        </div>
+        <div class="dimension-list" id="dimensionList">
+          <!-- 由 JavaScript 動態渲染維度項目 -->
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右側雷達圖畫布預覽區 -->
+    <section class="preview-container">
+      <div class="canvas-stage" id="canvasStage">
+        <canvas id="radarCanvas"></canvas>
+      </div>
+
+      <div class="preview-toolbar">
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="showValues" checked />
+            顯示項目數值
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="showScale" checked />
+            顯示刻度數字
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="showDots" checked />
+            顯示頂點圓點
+          </label>
+          <div style="display: inline-flex; align-items: center; gap: 0.4rem;">
+            <span style="font-size: 0.85rem; color: var(--text-muted);">匯出解析度:</span>
+            <select id="exportSize" style="width: auto; padding: 0.3rem 0.5rem;">
+              <option value="800">800 × 800 px</option>
+              <option value="1200" selected>1200 × 1200 px (高畫質)</option>
+              <option value="2000">2000 × 2000 px (印刷級)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="button" class="btn-success" id="btnDownloadBottom">
+          下載透明去背 PNG
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 提示訊息框 -->
+  <div id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    /**
+     * ==========================================================================
+     * 離線自訂雷達圖核心引擎 (純原生 Canvas 2D API，無任何外部依賴)
+     * ==========================================================================
+     */
+    (function () {
+      'use strict';
+
+      // 預設資料狀態
+      const DEFAULT_STATE = {
+        minVal: 0,
+        maxVal: 100,
+        gridLevels: 5,
+        gridShape: 'polygon', // 'polygon' | 'circle'
+        fillColor: '#3b82f6',
+        fillOpacity: 30,
+        strokeColor: '#2563eb',
+        labelColor: '#1e293b',
+        gridColor: '#94a3b8',
+        fontSize: 16,
+        showValues: true,
+        showScale: true,
+        showDots: true,
+        exportSize: 1200,
+        dimensions: [
+          { label: '技術能力', value: 88 },
+          { label: '溝通協作', value: 76 },
+          { label: '系統架構', value: 92 },
+          { label: '專案管理', value: 68 },
+          { label: '問題解決', value: 95 },
+          { label: '創新思維', value: 82 }
+        ]
+      };
+
+      // 深拷貝初始化狀態
+      let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+
+      // DOM 元素快取
+      const els = {
+        canvas: document.getElementById('radarCanvas'),
+        minVal: document.getElementById('minVal'),
+        maxVal: document.getElementById('maxVal'),
+        gridLevels: document.getElementById('gridLevels'),
+        gridShape: document.getElementById('gridShape'),
+        fillColor: document.getElementById('fillColor'),
+        fillColorHex: document.getElementById('fillColorHex'),
+        fillOpacity: document.getElementById('fillOpacity'),
+        opacityVal: document.getElementById('opacityVal'),
+        strokeColor: document.getElementById('strokeColor'),
+        strokeColorHex: document.getElementById('strokeColorHex'),
+        labelColor: document.getElementById('labelColor'),
+        labelColorHex: document.getElementById('labelColorHex'),
+        gridColor: document.getElementById('gridColor'),
+        gridColorHex: document.getElementById('gridColorHex'),
+        fontSize: document.getElementById('fontSize'),
+        dimCount: document.getElementById('dimCount'),
+        dimensionList: document.getElementById('dimensionList'),
+        btnAddDim: document.getElementById('btnAddDim'),
+        btnReset: document.getElementById('btnReset'),
+        btnDownloadTop: document.getElementById('btnDownloadTop'),
+        btnDownloadBottom: document.getElementById('btnDownloadBottom'),
+        showValues: document.getElementById('showValues'),
+        showScale: document.getElementById('showScale'),
+        showDots: document.getElementById('showDots'),
+        exportSize: document.getElementById('exportSize'),
+        toast: document.getElementById('toast')
+      };
+
+      let toastTimer = null;
+
+      /**
+       * 顯示非阻塞式提示訊息
+       */
+      function showToast(message) {
+        els.toast.textContent = message;
+        els.toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          els.toast.classList.remove('show');
+        }, 2800);
+      }
+
+      /**
+       * 資料清理與驗證輔助函式
+       */
+      function sanitizeHexColor(input, fallback) {
+        if (typeof input !== 'string') return fallback;
+        let cleaned = input.trim();
+        if (!cleaned.startsWith('#')) cleaned = '#' + cleaned;
+        if (/^#[0-9A-Fa-f]{6}$/.test(cleaned)) {
+          return cleaned.toLowerCase();
+        }
+        return fallback;
+      }
+
+      function hexToRgba(hex, alpha) {
+        const clean = hex.replace('#', '');
+        const r = parseInt(clean.substring(0, 2), 16);
+        const g = parseInt(clean.substring(2, 4), 16);
+        const b = parseInt(clean.substring(4, 6), 16);
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      function clampNumber(val, min, max, fallback) {
+        const num = Number(val);
+        if (!Number.isFinite(num)) return fallback;
+        return Math.min(Math.max(num, min), max);
+      }
+
+      /**
+       * 渲染左側動態維度控制列表
+       */
+      function renderDimensionInputs() {
+        els.dimCount.textContent = state.dimensions.length;
+        els.dimensionList.innerHTML = '';
+
+        state.dimensions.forEach((dim, index) => {
+          const row = document.createElement('div');
+          row.className = 'dimension-item';
+
+          // 維度名稱輸入框
+          const nameInput = document.createElement('input');
+          nameInput.type = 'text';
+          nameInput.value = dim.label;
+          nameInput.placeholder = `維度 ${index + 1}`;
+          nameInput.setAttribute('aria-label', `維度 ${index + 1} 名稱`);
+          nameInput.addEventListener('input', (e) => {
+            state.dimensions[index].label = e.target.value;
+            drawRadar(els.canvas, 800);
+          });
+
+          // 數值輸入框
+          const valInput = document.createElement('input');
+          valInput.type = 'number';
+          valInput.step = 'any';
+          valInput.value = dim.value;
+          valInput.setAttribute('aria-label', `維度 ${index + 1} 數值`);
+          valInput.addEventListener('input', (e) => {
+            const parsed = parseFloat(e.target.value);
+            state.dimensions[index].value = Number.isFinite(parsed) ? parsed : state.minVal;
+            drawRadar(els.canvas, 800);
+          });
+
+          // 刪除維度按鈕 (雷達圖至少需 3 個維度)
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'btn-icon-danger';
+          delBtn.title = '刪除此維度';
+          delBtn.disabled = state.dimensions.length <= 3;
+          delBtn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+          delBtn.addEventListener('click', () => {
+            if (state.dimensions.length <= 3) {
+              showToast('雷達圖至少需要保留 3 個維度');
+              return;
+            }
+            state.dimensions.splice(index, 1);
+            renderDimensionInputs();
+            drawRadar(els.canvas, 800);
+          });
+
+          row.appendChild(nameInput);
+          row.appendChild(valInput);
+          row.appendChild(delBtn);
+          els.dimensionList.appendChild(row);
+        });
+      }
+
+      /**
+       * 核心雷達圖繪製函式 (保證透明背景，支援任意解析度縮放)
+       * @param {HTMLCanvasElement} targetCanvas 目標畫布
+       * @param {number} size 畫布正方形邊長 (px)
+       */
+      function drawRadar(targetCanvas, size) {
+        const ctx = targetCanvas.getContext('2d');
+        targetCanvas.width = size;
+        targetCanvas.height = size;
+
+        // 1. 清空畫布確保 100% 透明去背 (Alpha = 0)
+        ctx.clearRect(0, 0, size, size);
+
+        const count = state.dimensions.length;
+        if (count < 3) return;
+
+        // 確保數值範圍有效
+        let minV = Number(state.minVal);
+        let maxV = Number(state.maxVal);
+        if (!Number.isFinite(minV)) minV = 0;
+        if (!Number.isFinite(maxV) || maxV <= minV) maxV = minV + 100;
+
+        const scaleFactor = size / 800; // 以 800px 為基準等比例縮放線寬與字體
+        const fontSize = Math.round(state.fontSize * scaleFactor);
+        const centerX = size / 2;
+        const centerY = size / 2;
+        // 預留四周文字標籤邊距
+        const padding = Math.max(115 * scaleFactor, fontSize * 5.2);
+        const radius = Math.max(40, (size / 2) - padding);
+
+        const angleStep = (Math.PI * 2) / count;
+        const startAngle = -Math.PI / 2; // 從正上方 12 點鐘方向開始
+
+        // 輔助函式：取得第 i 個軸在特定比例 (0~1) 的座標
+        function getPoint(index, ratio) {
+          const angle = startAngle + index * angleStep;
+          return {
+            x: centerX + Math.cos(angle) * radius * ratio,
+            y: centerY + Math.sin(angle) * radius * ratio,
+            angle: angle
+          };
+        }
+
+        // 2. 繪製背景網格圈層
+        const levels = clampNumber(state.gridLevels, 1, 20, 5);
+        ctx.strokeStyle = hexToRgba(state.gridColor, 0.45);
+        ctx.lineWidth = 1.5 * scaleFactor;
+
+        for (let lvl = 1; lvl <= levels; lvl++) {
+          const ratio = lvl / levels;
+          ctx.beginPath();
+          if (state.gridShape === 'circle') {
+            ctx.arc(centerX, centerY, radius * ratio, 0, Math.PI * 2);
+          } else {
+            for (let i = 0; i < count; i++) {
+              const pt = getPoint(i, ratio);
+              if (i === 0) ctx.moveTo(pt.x, pt.y);
+              else ctx.lineTo(pt.x, pt.y);
+            }
+            ctx.closePath();
+          }
+          ctx.stroke();
+        }
+
+        // 3. 繪製從中心點出發的放射狀軸線
+        ctx.strokeStyle = hexToRgba(state.gridColor, 0.55);
+        ctx.lineWidth = 1.5 * scaleFactor;
+        for (let i = 0; i < count; i++) {
+          const outerPt = getPoint(i, 1);
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY);
+          ctx.lineTo(outerPt.x, outerPt.y);
+          ctx.stroke();
+        }
+
+        // 4. 繪製刻度數值 (沿第一條垂直向上軸線)
+        if (state.showScale) {
+          ctx.font = `500 ${Math.round(fontSize * 0.72)}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif`;
+          ctx.fillStyle = hexToRgba(state.labelColor, 0.75);
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+
+          for (let lvl = 1; lvl <= levels; lvl++) {
+            const ratio = lvl / levels;
+            const scaleValue = minV + (maxV - minV) * ratio;
+            const formattedScale = Number.isInteger(scaleValue) ? scaleValue.toString() : scaleValue.toFixed(1);
+            const yPos = centerY - radius * ratio;
+            ctx.fillText(formattedScale, centerX + 6 * scaleFactor, yPos);
+          }
+        }
+
+        // 5. 計算各維度資料點座標 (自動限制在 minV ~ maxV 範圍內)
+        const dataPoints = state.dimensions.map((dim, i) => {
+          const clampedVal = clampNumber(dim.value, minV, maxV, minV);
+          const ratio = (clampedVal - minV) / (maxV - minV);
+          return {
+            ...getPoint(i, ratio),
+            rawVal: dim.value,
+            label: dim.label.trim() || `維度 ${i + 1}`
+          };
+        });
+
+        // 6. 繪製雷達資料多邊形填充與外框線
+        ctx.beginPath();
+        dataPoints.forEach((pt, i) => {
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        });
+        ctx.closePath();
+
+        ctx.fillStyle = hexToRgba(state.fillColor, state.fillOpacity / 100);
+        ctx.fill();
+
+        ctx.strokeStyle = state.strokeColor;
+        ctx.lineWidth = 3 * scaleFactor;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        // 7. 繪製資料頂點圓點
+        if (state.showDots) {
+          dataPoints.forEach((pt) => {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, 5 * scaleFactor, 0, Math.PI * 2);
+            ctx.fillStyle = state.strokeColor;
+            ctx.fill();
+            ctx.lineWidth = 2 * scaleFactor;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+          });
+        }
+
+        // 8. 繪製各維度外部標籤與項目數值
+        ctx.font = `700 ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif`;
+        ctx.fillStyle = state.labelColor;
+
+        const labelOffset = 18 * scaleFactor;
+
+        dataPoints.forEach((pt, i) => {
+          const outer = getPoint(i, 1);
+          const cos = Math.cos(outer.angle);
+          const sin = Math.sin(outer.angle);
+
+          const labelX = outer.x + cos * labelOffset;
+          const labelY = outer.y + sin * labelOffset;
+
+          // 依據象限自動對齊文字避免壓線
+          if (Math.abs(cos) < 0.12) {
+            ctx.textAlign = 'center';
+          } else if (cos > 0) {
+            ctx.textAlign = 'left';
+          } else {
+            ctx.textAlign = 'right';
+          }
+
+          if (Math.abs(sin) < 0.12) {
+            ctx.textBaseline = 'middle';
+          } else if (sin > 0) {
+            ctx.textBaseline = 'top';
+          } else {
+            ctx.textBaseline = 'bottom';
+          }
+
+          const displayText = state.showValues ? `${pt.label} (${pt.rawVal})` : pt.label;
+          ctx.fillText(displayText, labelX, labelY);
+        });
+      }
+
+      /**
+       * 同步 UI 控制項與 state 狀態
+       */
+      function syncUIFromState() {
+        els.minVal.value = state.minVal;
+        els.maxVal.value = state.maxVal;
+        els.gridLevels.value = state.gridLevels;
+        els.gridShape.value = state.gridShape;
+
+        els.fillColor.value = state.fillColor;
+        els.fillColorHex.value = state.fillColor.toUpperCase();
+        els.fillOpacity.value = state.fillOpacity;
+        els.opacityVal.textContent = `${state.fillOpacity}%`;
+
+        els.strokeColor.value = state.strokeColor;
+        els.strokeColorHex.value = state.strokeColor.toUpperCase();
+
+        els.labelColor.value = state.labelColor;
+        els.labelColorHex.value = state.labelColor.toUpperCase();
+
+        els.gridColor.value = state.gridColor;
+        els.gridColorHex.value = state.gridColor.toUpperCase();
+
+        els.fontSize.value = state.fontSize;
+        els.showValues.checked = state.showValues;
+        els.showScale.checked = state.showScale;
+        els.showDots.checked = state.showDots;
+        els.exportSize.value = state.exportSize;
+
+        renderDimensionInputs();
+        drawRadar(els.canvas, 800);
+      }
+
+      /**
+       * 綁定雙向顏色選擇器與 Hex 輸入框
+       */
+      function bindColorPair(pickerEl, hexEl, stateKey) {
+        pickerEl.addEventListener('input', (e) => {
+          state[stateKey] = e.target.value;
+          hexEl.value = e.target.value.toUpperCase();
+          drawRadar(els.canvas, 800);
+        });
+
+        hexEl.addEventListener('change', (e) => {
+          const validHex = sanitizeHexColor(e.target.value, state[stateKey]);
+          state[stateKey] = validHex;
+          pickerEl.value = validHex;
+          hexEl.value = validHex.toUpperCase();
+          drawRadar(els.canvas, 800);
+        });
+      }
+
+      /**
+       * 匯出透明去背 PNG 檔案
+       */
+      function downloadTransparentPNG() {
+        try {
+          const exportResolution = clampNumber(els.exportSize.value, 400, 4000, 1200);
+          const offscreenCanvas = document.createElement('canvas');
+          drawRadar(offscreenCanvas, exportResolution);
+
+          offscreenCanvas.toBlob((blob) => {
+            if (!blob) {
+              showToast('PNG 產生失敗，請重試');
+              return;
+            }
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().slice(0, 10);
+            link.href = url;
+            link.download = `radar-chart-${timestamp}.png`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            showToast(`已成功下載去背 PNG (${exportResolution}×${exportResolution}px)`);
+          }, 'image/png');
+        } catch (err) {
+          console.error(err);
+          showToast('匯出過程發生錯誤');
+        }
+      }
+
+      /**
+       * 初始化事件監聽器
+       */
+      function initEvents() {
+        els.minVal.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (Number.isFinite(val)) {
+            state.minVal = val;
+            drawRadar(els.canvas, 800);
+          }
+        });
+
+        els.maxVal.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (Number.isFinite(val)) {
+            state.maxVal = val;
+            drawRadar(els.canvas, 800);
+          }
+        });
+
+        els.gridLevels.addEventListener('input', (e) => {
+          state.gridLevels = clampNumber(e.target.value, 1, 20, 5);
+          drawRadar(els.canvas, 800);
+        });
+
+        els.gridShape.addEventListener('change', (e) => {
+          state.gridShape = e.target.value;
+          drawRadar(els.canvas, 800);
+        });
+
+        bindColorPair(els.fillColor, els.fillColorHex, 'fillColor');
+        bindColorPair(els.strokeColor, els.strokeColorHex, 'strokeColor');
+        bindColorPair(els.labelColor, els.labelColorHex, 'labelColor');
+        bindColorPair(els.gridColor, els.gridColorHex, 'gridColor');
+
+        els.fillOpacity.addEventListener('input', (e) => {
+          state.fillOpacity = clampNumber(e.target.value, 0, 100, 30);
+          els.opacityVal.textContent = `${state.fillOpacity}%`;
+          drawRadar(els.canvas, 800);
+        });
+
+        els.fontSize.addEventListener('input', (e) => {
+          state.fontSize = clampNumber(e.target.value, 10, 48, 16);
+          drawRadar(els.canvas, 800);
+        });
+
+        els.showValues.addEventListener('change', (e) => {
+          state.showValues = e.target.checked;
+          drawRadar(els.canvas, 800);
+        });
+
+        els.showScale.addEventListener('change', (e) => {
+          state.showScale = e.target.checked;
+          drawRadar(els.canvas, 800);
+        });
+
+        els.showDots.addEventListener('change', (e) => {
+          state.showDots = e.target.checked;
+          drawRadar(els.canvas, 800);
+        });
+
+        els.exportSize.addEventListener('change', (e) => {
+          state.exportSize = Number(e.target.value);
+        });
+
+        els.btnAddDim.addEventListener('click', () => {
+          const midVal = Math.round((Number(state.minVal) + Number(state.maxVal)) / 2);
+          state.dimensions.push({
+            label: `新維度 ${state.dimensions.length + 1}`,
+            value: Number.isFinite(midVal) ? midVal : 50
+          });
+          renderDimensionInputs();
+          drawRadar(els.canvas, 800);
+        });
+
+        els.btnReset.addEventListener('click', () => {
+          state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+          syncUIFromState();
+          showToast('已重設為預設雷達圖設定');
+        });
+
+        els.btnDownloadTop.addEventListener('click', downloadTransparentPNG);
+        els.btnDownloadBottom.addEventListener('click', downloadTransparentPNG);
+      }
+
+      // 啟動應用程式
+      window.addEventListener('DOMContentLoaded', () => {
+        initEvents();
+        syncUIFromState();
+      });
+    })();
+  </script>
+</body>
+</html>
